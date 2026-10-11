@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html style="height: 100%; margin: 0;">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CheckSky!</title>
+<style>
+body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  background: linear-gradient(-45deg, rgb(234, 166, 17), rgb(195, 93, 34), rgb(16, 168, 219), rgb(4, 38, 69));
+  background-size: 400% 400%;
+  animation: moveGradient 12s linear infinite;
+}
+@keyframes moveGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+/* ===== SUN & MOON SKY LAYER ===== */
+.sky {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.celestial-x,
+.celestial-y {
+  animation-duration: 12s;
+  animation-iteration-count: infinite;
+}
+.celestial-x {
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation-name: travelX;
+  animation-timing-function: linear;
+}
+.celestial-y {
+  animation-name: arcY;
+}
+#sunX, #sunY { animation-delay: -3s; }
+#moonX, #moonY { animation-delay: -9s; }
+@keyframes travelX {
+  0%   { transform: translateX(-140px); }
+  50%  { transform: translateX(calc(100vw + 40px)); }
+  100% { transform: translateX(calc(100vw + 40px)); }
+}
+@keyframes arcY {
+  0%   { transform: translateY(28vh); animation-timing-function: cubic-bezier(0.5, 1, 0.89, 1); }
+  25%  { transform: translateY(2vh);  animation-timing-function: cubic-bezier(0.11, 0, 0.5, 0); }
+  50%  { transform: translateY(28vh); }
+  100% { transform: translateY(28vh); }
+}
+.sun,
+.moon {
+  font-size: 80px;
+  line-height: 1;
+}
+.sun {
+  filter: drop-shadow(0 0 25px rgba(255, 200, 50, 0.8));
+}
+.moon {
+  filter: drop-shadow(0 0 20px rgba(200, 220, 255, 0.7));
+}
+h1 {
+  position: relative;
+  z-index: 1;
+}
+#appCard {
+  position: relative;
+  z-index: 1;
+  background-color: rgba(255, 255, 255, 0.95);
+  padding: 40px;
+  border-radius: 24px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  width: 80%;
+  max-width: 450px;
+  font-family: Lucida Sans, sans-serif;
+  transition: all 0.3s ease;
+  margin-top: 20px;
+}
+span {
+  font-size: 26px;
+  font-weight: bold;
+  color: #111;
+  display: block;
+  margin-bottom: 15px;
+}
+input {
+  font-family: Lucida Sans, sans-serif;
+  font-size: 28px;
+  text-align: center;
+  padding: 12px;
+  width: 80%;
+  border: 2px solid #ccc;
+  border-radius: 50px;
+  margin-bottom: 20px;
+  outline: none;
+}
+button {
+  font-family: Lucida Sans, sans-serif;
+  font-size: 20px;
+  font-weight: bold;
+  color: white;
+  background-color: #0909c6;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 50px;
+  cursor: pointer;
+  width: 90%;
+  transition: background 0.2s;
+}
+button:hover {
+  background-color: #18c5ff;
+}
+img {
+  padding: 10px;
+}
+.image-button-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 25px;
+}
+#verityDropdown {
+  font-family: Lucida Sans, sans-serif;
+  font-size: 15px;
+  font-weight: bold;
+  color: #333;
+  background-color: #eee;
+  border: 2px solid #ccc;
+  padding: 12px;
+  border-radius: 12px;
+  width: 420px;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.2s;
+}
+#verityDropdown:hover {
+  background-color: #e0e0e0;
+}
+#resultText {
+  display: none;
+  font-size: 22px;
+  margin-top: 25px;
+  padding: 15px;
+  border-radius: 12px;
+  font-weight: bold;
+}
+</style>
+<script>
+
+// ===== REAL DATA (Zippopotam.us + Open-Meteo + National Weather Service alerts) =====
+// Weather results never expire and survive refreshing (stored in localStorage).
+// Official alerts are NOT saved, they are fetched fresh every time because they change quickly.
+var weatherCache = {};
+try {
+  weatherCache = JSON.parse(localStorage.getItem("checkskyCache2")) || {};
+} catch (e) {
+  weatherCache = {};
+}
+
+var WEATHER_CODES = {
+  0: "Clear sky", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast",
+  45: "Fog", 48: "Freezing fog", 51: "Light drizzle", 53: "Drizzle", 55: "Heavy drizzle",
+  56: "Freezing drizzle", 57: "Freezing drizzle", 61: "Light rain", 63: "Rain", 65: "Heavy rain",
+  66: "Freezing rain", 67: "Freezing rain", 71: "Light snow", 73: "Snow", 75: "Heavy snow",
+  77: "Snow grains", 80: "Rain showers", 81: "Rain showers", 82: "Violent rain showers",
+  85: "Snow showers", 86: "Heavy snow showers", 95: "Thunderstorm", 96: "Thunderstorm with hail",
+  99: "Thunderstorm with heavy hail"
+};
+
+// Makes API text safe to put on the page
+function esc(s){
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Tries the full request first, then simpler versions if the server rejects it
+async function fetchForecast(lat, lon){
+  var root = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon;
+  var units = "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto";
+  var cur = "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,precipitation,rain,showers,weather_code";
+
+  var attempts = [
+    root + cur + "&hourly=precipitation_probability&forecast_hours=1&minutely_15=precipitation&forecast_minutely_15=4" + units, // full
+    root + cur + "&hourly=precipitation_probability&forecast_hours=1" + units,                                                // no 15-min data
+    root + "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph" // basic version
+  ];
+
+  var lastReason = "";
+  for (var i = 0; i < attempts.length; i++) {
+      try {
+          var res = await fetch(attempts[i]);
+          if (res.ok) return await res.json();
+          var body = await res.json().catch(function(){ return {}; });
+          lastReason = res.status + " " + (body.reason || "");
+          if (res.status === 429) break;
+      } catch (e) {
+          lastReason = e.message;
+      }
+  }
+  throw new Error("Weather service is unavailable right now (" + lastReason + ").");
+}
+
+async function getWeather(zip){
+  var cached = weatherCache[zip];
+  if (cached) return cached.data;
+
+  // 1) zip code -> city + coordinates
+  var geoRes = await fetch("https://api.zippopotam.us/us/" + zip);
+  if (!geoRes.ok) throw new Error("Zip code " + zip + " was not found.");
+  var place = (await geoRes.json()).places[0];
+
+  // 2) coordinates -> weather (Open-Meteo first, National Weather Service as backup)
+  var data;
+  try {
+    data = await getWeatherOpenMeteo(place);
+  } catch (err) {
+    try {
+      data = await getWeatherNWS(place);
+    } catch (err2) {
+      throw new Error(err.message + " The backup weather service also failed (" + err2.message + ").");
+    }
+  }
+  weatherCache[zip] = { time: Date.now(), data: data };
+  try {
+    localStorage.setItem("checkskyCache2", JSON.stringify(weatherCache));
+  } catch (e) {}
+  return data;
+}
+
+// Main weather source: Open-Meteo
+async function getWeatherOpenMeteo(place){
+  var json = await fetchForecast(place.latitude, place.longitude);
+  var c = json.current;
+  var code = c.weather_code;
+
+  var chance = (json.hourly && json.hourly.precipitation_probability)
+      ? json.hourly.precipitation_probability[0] : null;
+  var nextHour = 0;
+  if (json.minutely_15 && json.minutely_15.precipitation) {
+      json.minutely_15.precipitation.forEach(function(p){ nextHour += (p || 0); });
+  }
+  var gustsRaw = c.wind_gusts_10m || c.wind_speed_10m || 0;
+  var rainAmt = Math.max(c.precipitation || 0, c.rain || 0, c.showers || 0);
+  var isRaining = rainAmt > 0 || (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95;
+  var rainSoon = !isRaining && ((chance !== null && chance >= 40) || nextHour > 0);
+
+  var data = {
+    lat: place.latitude,
+    lon: place.longitude,
+    city: place["place name"],
+    state: place["state abbreviation"],
+    temp: Math.round(c.temperature_2m),
+    humidity: c.relative_humidity_2m,
+    wind: Math.round(c.wind_speed_10m),
+    gusts: Math.round(gustsRaw),
+    desc: WEATHER_CODES[code] || "Unknown conditions",
+    rainAmt: rainAmt,
+    chance: chance,
+    nextHour: nextHour,
+    isRaining: isRaining,
+    rainSoon: rainSoon,
+    isSevere: c.wind_speed_10m >= 21 || gustsRaw >= 35 || code === 75 || code === 86 || code >= 95
+  };
+  return data;
+}
+
+// NEW: backup weather from the US National Weather Service, used if Open-Meteo is unavailable
+async function getWeatherNWS(place){
+  var pRes = await fetch("https://api.weather.gov/points/" + place.latitude + "," + place.longitude);
+  if (!pRes.ok) throw new Error("NWS " + pRes.status);
+  var props = (await pRes.json()).properties;
+
+  // latest reading from the nearest weather stations
+  var sRes = await fetch(props.observationStations);
+  if (!sRes.ok) throw new Error("NWS stations " + sRes.status);
+  var stations = (await sRes.json()).features || [];
+  var obs = null;
+  for (var i = 0; i < Math.min(stations.length, 3) && !obs; i++) {
+      try {
+          var oRes = await fetch(stations[i].id + "/observations/latest");
+          if (oRes.ok) {
+              var o = (await oRes.json()).properties;
+              if (o.temperature && o.temperature.value !== null) obs = o;
+          }
+      } catch (e) {}
+  }
+  if (!obs) throw new Error("no recent station readings");
+
+  // chance of rain this hour from the hourly forecast (optional)
+  var chance = null;
+  try {
+      var fRes = await fetch(props.forecastHourly);
+      if (fRes.ok) {
+          var per = (await fRes.json()).properties.periods[0];
+          if (per.probabilityOfPrecipitation && per.probabilityOfPrecipitation.value !== null) {
+              chance = per.probabilityOfPrecipitation.value;
+          }
+      }
+  } catch (e) {}
+
+  var desc = obs.textDescription || "Conditions unavailable";
+  var lower = desc.toLowerCase();
+  var wind = (obs.windSpeed && obs.windSpeed.value !== null) ? Math.round(obs.windSpeed.value * 0.621371) : 0;
+  var gusts = (obs.windGust && obs.windGust.value !== null) ? Math.round(obs.windGust.value * 0.621371) : wind;
+  var rainAmt = (obs.precipitationLastHour && obs.precipitationLastHour.value) ? obs.precipitationLastHour.value / 25.4 : 0;
+  var isRaining = rainAmt > 0 || /rain|drizzle|shower|thunder|storm/.test(lower);
+  var rainSoon = !isRaining && chance !== null && chance >= 40;
+
+  return {
+    lat: place.latitude,
+    lon: place.longitude,
+    city: place["place name"],
+    state: place["state abbreviation"],
+    temp: Math.round(obs.temperature.value * 9 / 5 + 32),
+    humidity: (obs.relativeHumidity && obs.relativeHumidity.value !== null) ? Math.round(obs.relativeHumidity.value) : "?",
+    wind: wind,
+    gusts: gusts,
+    desc: desc,
+    rainAmt: rainAmt,
+    chance: chance,
+    nextHour: 0,
+    isRaining: isRaining,
+    rainSoon: rainSoon,
+    isSevere: wind >= 21 || gusts >= 35 || /thunder|tornado|hail|blizzard|heavy snow/.test(lower)
+  };
+}
+
+// NEW: official severe weather alerts from the US National Weather Service (api.weather.gov)
+// Returns a list of alerts, an empty list if none, or null if the service could not be reached
+async function getAlerts(lat, lon){
+  try {
+    var res = await fetch("https://api.weather.gov/alerts/active?point=" + lat + "," + lon);
+    if (!res.ok) return null;
+    var json = await res.json();
+    return (json.features || []).map(function(f){
+      return {
+        event: f.properties.event,
+        severity: f.properties.severity,
+        headline: f.properties.headline
+      };
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+// Combines the saved weather with fresh alerts
+async function getReport(zip){
+  var w = await getWeather(zip);
+  var alerts = await getAlerts(w.lat, w.lon);
+  var report = Object.assign({}, w, { alerts: alerts });
+  if (alerts && alerts.some(function(a){ return a.severity === "Severe" || a.severity === "Extreme"; })) {
+      report.isSevere = true;
+  }
+  return report;
+}
+
+// Color themes for the result box (same colors as before)
+function setBox(kind){
+  var box = document.getElementById("resultText");
+  var themes = {
+    good:    ["#d4edda", "#155724", "#c3e6cb"],
+    bad:     ["#f8d7da", "#721c24", "#f5c6cb"],
+    warn:    ["#fff3cd", "#856404", "#ffeeba"],
+    neutral: ["#e2e3e5", "#383d41", "#d6d8db"]
+  };
+  var t = themes[kind];
+  box.style.display = "block";
+  box.style.backgroundColor = t[0];
+  box.style.color = t[1];
+  box.style.border = "2px solid " + t[2];
+  return box;
+}
+
+function placeName(d){
+  return d.city + ", " + d.state;
+}
+
+// One-line rain summary used by the main button
+function rainLine(w){
+  var chanceText = (w.chance !== null) ? w.chance + "% chance of rain this hour" : "";
+  if (w.isRaining) {
+      return "🌧️ Rain detected: " + w.desc.toLowerCase() + (w.rainAmt > 0 ? " (" + w.rainAmt.toFixed(2) + " in)" : "");
+  } else if (w.rainSoon) {
+      return "🌦️ Rain possible soon" + (chanceText ? ": " + chanceText : "");
+  } else {
+      return "☂️ No rain right now" + (chanceText ? " (" + chanceText + ")" : "");
+  }
+}
+
+// NEW: one-line alert summary used by the main button
+function alertLine(w){
+  if (w.alerts === null) return "❔ Could not check official weather alerts";
+  if (w.alerts.length === 0) return "✅ No active weather alerts";
+  var names = [];
+  w.alerts.forEach(function(a){ if (names.indexOf(a.event) === -1) names.push(a.event); });
+  return "🚨 Active alert: " + esc(names.slice(0, 3).join(", "));
+}
+
+// Handles the selection logic from the Verity dropdown
+async function verity(){
+  var dropdown = document.getElementById("verityDropdown");
+  var selection = dropdown.value;
+  var resultDisplay = document.getElementById("resultText");
+  var CheckskyString = document.getElementById("zip").value.replace(/\D/g, '');
+
+  if (selection === "no_help") {
+      resultDisplay.style.display = "none";
+      return;
+  }
+
+  if (countDigits(CheckskyString) !== 5) {
+      alert("Please type in your 5-digit zip code first!");
+      dropdown.selectedIndex = 0;
+      return;
+  }
+
+  setBox("neutral").innerHTML = "Verity is looking at the sky... 🔭";
+
+  try {
+      var w = await getReport(CheckskyString);
+      var box;
+
+      if (selection === "natural_disasters") {
+          if (w.alerts && w.alerts.length > 0) {
+              var names = [];
+              w.alerts.forEach(function(a){ if (names.indexOf(a.event) === -1) names.push(a.event); });
+              box = setBox(w.isSevere ? "bad" : "warn");
+              box.innerHTML = "🚨 Official Alert for " + placeName(w) + ":<br>The National Weather Service has issued: " + esc(names.slice(0, 3).join(", ")) + ".<br>" + esc(w.alerts[0].headline || "") + "<br>Do not fly your drone!";
+          } else if (w.isSevere) {
+              box = setBox("warn");
+              box.innerHTML = "⚠️ Severe Weather Warning for " + placeName(w) + ":<br>" + w.desc + " with winds of " + w.wind + " mph (gusts up to " + w.gusts + " mph). These conditions can seriously damage your drone equipment. Do not fly!";
+          } else {
+              box = setBox("good");
+              box.innerHTML = "✅ No Severe Weather for " + placeName(w) + ":<br>" + (w.alerts === null ? "I could not reach the National Weather Service, but winds" : "The National Weather Service has no active alerts, and winds") + " are only " + w.wind + " mph with " + w.desc.toLowerCase() + ". No hurricanes, tornadoes, blizzards, or heavy hail are expected in your area right now.";
+          }
+      }
+      else if (selection === "visibility") {
+          if (w.isRaining) {
+              box = setBox("bad");
+              box.innerHTML = "🌧️ Visibility Report for " + placeName(w) + ":<br>Current conditions: " + w.desc.toLowerCase() + ". Precipitation obscures camera visibility and lowers safe drone handling thresholds.";
+          } else {
+              box = setBox("good");
+              box.innerHTML = "☀️ Visibility Report for " + placeName(w) + ":<br>Current conditions: " + w.desc.toLowerCase() + " (humidity " + w.humidity + "%). No rain detected to obstruct your drone flight path view.";
+          }
+      }
+      else if (selection === "rain_check") {
+          if (w.isRaining) {
+              box = setBox("bad");
+              box.innerHTML = "🌧️ Rain Report for " + placeName(w) + ":<br>Yes, it's wet out there right now: " + w.desc.toLowerCase() + (w.rainAmt > 0 ? " (" + w.rainAmt.toFixed(2) + " in recorded)" : "") + ". Keep your drone grounded!";
+          } else if (w.rainSoon) {
+              box = setBox("warn");
+              box.innerHTML = "🌦️ Rain Report for " + placeName(w) + ":<br>Not raining yet, but rain looks possible soon" + (w.chance !== null ? " (" + w.chance + "% chance this hour)" : "") + (w.nextHour > 0 ? ", with about " + w.nextHour.toFixed(2) + " in expected in the next hour" : "") + ". Fly with caution!";
+          } else {
+              box = setBox("good");
+              box.innerHTML = "☂️ Rain Report for " + placeName(w) + ":<br>No rain right now" + (w.chance !== null ? " and only a " + w.chance + "% chance this hour" : "") + ". Looks dry!";
+          }
+      }
+      else if (selection === "program_purpose") {
+          box = setBox("neutral");
+          box.innerHTML = "🛸 About CheckSky!:<br>This app looks up your zip code (" + CheckskyString + " = " + placeName(w) + "), pulls live weather and rain data from Open-Meteo, and checks the National Weather Service for official alerts to tell you if it's safe to fly your drone. Right now: " + w.temp + "°F, " + w.wind + " mph winds.";
+      }
+  } catch (err) {
+      setBox("bad").innerHTML = "❌ " + err.message;
+  }
+}
+
+async function skyzone(){
+  var CheckskyString = document.getElementById("zip").value.replace(/\D/g, '');
+
+  if (countDigits(CheckskyString) !== 5) {
+      alert("Number must be 5 digits");
+      return;
+  }
+
+  setBox("neutral").innerHTML = "Checking the skies... 🛰️";
+
+  try {
+      var w = await getReport(CheckskyString);
+      var rainstring = w.isRaining ? "it is raining." : "it is not raining.";
+      var canFly = !w.isRaining && !w.isSevere && w.wind <= 20;
+      var box = setBox(canFly ? "good" : "bad");
+
+      box.innerHTML = "📍 " + placeName(w) + " — " + w.desc + ", " + w.temp + "°F<br>" +
+        rainLine(w) + "<br>" +
+        alertLine(w) + "<br>" +
+        "Windspeed is " + w.wind + " mph. And " + rainstring + " " +
+        (canFly ? "You can fly your drone! 🛸" : "You cannot fly your drone. 🛸");
+  } catch (err) {
+      setBox("bad").innerHTML = "❌ " + err.message;
+  }
+}
+
+function countDigits(CheckskyString) {
+  return CheckskyString.length;
+}
+</script>
+</head>
+<body>
+
+<!-- Sun (warm colors) and moon (cool colors) travel across the sky behind the card -->
+<div class="sky">
+  <div class="celestial-x" id="sunX">
+     <div class="celestial-y" id="sunY">
+        <div class="sun">🌙</div>
+     </div>
+  </div>
+  <div class="celestial-x" id="moonX">
+     <div class="celestial-y" id="moonY">
+        <div class="moon">☀️</div>
+     </div>
+  </div>
+</div>
+
+<h1 style="color: rgb(206, 219, 241); font-family: Lucida Sans, sans-serif; font-size: 50px; margin-bottom: 0;"><b>CheckSky!</b></h1>
+
+<div id="appCard">
+  <span>Enter zip-code here:</span>
+  <input type="text" id="zip" maxlength="5" inputmode="numeric" placeholder="exm. 08852">
+  <button onclick="skyzone()">☀️ Check environment condition</button>
+  <div id="resultText"></div>
+  <div class="image-button-row">
+      <img src="https://static.wikia.nocookie.net/verityminecraft/images/1/1a/Verity.png/revision/latest?cb=20260920131957" width="100px" height="100px" alt="Smiley Face">
+
+      <select id="verityDropdown" onchange="verity()">
+          <option value="default" disabled selected>😀 Hey, it's me! It's Verity! Ask me anything!</option>
+          <option value="natural_disasters">1) 🌤️ Are there any natural disasters?</option>
+          <option value="visibility">2) 👀 What's the visibility status?</option>
+          <option value="rain_check">3) 🌧️ Is it going to rain?</option>
+          <option value="program_purpose">4) 💭 What does this program do?</option>
+          <option value="no_help">5) ❌ No help needed</option>
+      </select>
+  </div>
+</div>
+
+</body>
+</html>
